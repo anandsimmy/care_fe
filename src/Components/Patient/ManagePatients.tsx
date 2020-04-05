@@ -1,213 +1,183 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import Grid from '@material-ui/core/Grid';
-import { Card, CardContent, CardHeader, Tooltip, Typography, Box } from "@material-ui/core";
+import Button from "@material-ui/core/Button";
+import Grid from "@material-ui/core/Grid";
 import { makeStyles } from "@material-ui/core/styles";
+import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
+import { navigate } from "hookrouter";
+import React, { useCallback, useState } from "react";
 import { useDispatch } from "react-redux";
-import { getFacilities, getAllPatient } from "../../Redux/actions";
-import TitleHeader from "../Common/TitleHeader";
-import Pagination from "../Common/Pagination";
-import AddCard from '../Common/AddCard';
-import { navigate } from 'hookrouter';
+import { statusType, useAbortableEffect } from "../../Common/utils";
+import { getAllPatient } from "../../Redux/actions";
 import { Loading } from "../Common/Loading";
-import { useAbortableEffect, statusType } from '../../Common/utils';
+import PageTitle from "../Common/PageTitle";
+import Pagination from "../Common/Pagination";
 
-const useStyles = makeStyles(theme => ({
-    root: {
-        flexGrow: 1,
-        padding: '8px'
-    },
-    card: {
-        height: 160,
-        width: '100%',
-        backgroundColor: '#FFFFFF',
-        cursor: 'pointer'
-    },
-    title: {
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        fontWeight: 400,
-        //padding: '10px',
-        //fontSize: '14px',
-        display: 'inline-block',
-        [theme.breakpoints.up('md')]: {
-            width: '12vw'
-        },
-        [theme.breakpoints.down('sm')]: {
-            width: '40vw'
-        },
-        [theme.breakpoints.down('xs')]: {
-            width: '65vw'
-        }
-    },
-    content: {
-        padding: '5px 10px'
-    },
-    cardHeader: {
-        padding: '10px'
-    },
-    contentText: {
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        display: 'inline-block',
-        [theme.breakpoints.up('md')]: {
-            width: '10vw'
-        },
-        [theme.breakpoints.down('sm')]: {
-            width: '40vw'
-        },
-        [theme.breakpoints.down('xs')]: {
-            width: '40vw'
-        }
-    },
-    spacing: {
-        marginLeft: theme.spacing(1)
-    },
-    margin: {
-        margin: theme.spacing(1)
-    },
-    addUserCard: {
-        marginTop: '50px'
-    },
-    paginateTopPadding: {
-        paddingTop: '50px'
-    },
-    userCardSideTitle: {
-        fontSize: '13px'
-    },
-    toolTip: {
-        fontSize: '13px'
-    },
-    displayFlex: {
-        display: 'flex'
-    },
-    minHeight: {
-        minHeight: '65vh'
-    }
+const useStyles = makeStyles((theme) => ({
+  paginateTopPadding: {
+    paddingTop: "50px",
+  },
+  displayFlex: {
+    display: "flex",
+  },
 }));
 
 export const PatientManager = (props: any) => {
-    const { facilityId } = props;
-    const classes = useStyles();
-    const dispatch: any = useDispatch();
-    const initialData: any[] = [];
-    const [data, setData] = useState(initialData);
+  const { facilityId } = props;
+  const classes = useStyles();
+  const dispatch: any = useDispatch();
+  const initialData: any[] = [];
+  const [data, setData] = useState(initialData);
 
-    let managePatients: any = null;
-    const [isLoading, setIsLoading] = useState(false);
-    const [totalCount, setTotalCount] = useState(0);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [offset, setOffset] = useState(0);
+  let managePatients: any = null;
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [offset, setOffset] = useState(0);
 
-    const limit = 15;
+  const limit = 10;
 
-    const fetchData = useCallback(async (status: statusType) => {
-        setIsLoading(true);
-        const res = await dispatch(getAllPatient({ limit, offset }));
-        if (!status.aborted) {
-            if (res && res.data) {
-                setData(res.data.results);
-                setTotalCount(res.data.count);
-            }
-            setIsLoading(false);
+  const fetchData = useCallback(
+    async (status: statusType) => {
+      setIsLoading(true);
+      const res = await dispatch(
+        getAllPatient({ facility: facilityId, limit, offset })
+      );
+      if (!status.aborted) {
+        if (res && res.data) {
+          setData(res.data.results);
+          setTotalCount(res.data.count);
         }
-    }, [dispatch, offset]);
+        setIsLoading(false);
+      }
+    },
+    [dispatch, facilityId, offset]
+  );
 
-    useAbortableEffect((status: statusType) => {
-        fetchData(status);
-    }, [fetchData]);
+  useAbortableEffect(
+    (status: statusType) => {
+      fetchData(status);
+    },
+    [fetchData]
+  );
 
-    const handlePagination = (page: number, limit: number) => {
-        const offset = (page - 1) * limit;
-        setCurrentPage(page);
-        setOffset(offset);
-    };
+  const handlePagination = (page: number, limit: number) => {
+    const offset = (page - 1) * limit;
+    setCurrentPage(page);
+    setOffset(offset);
+  };
 
-    let patientList: any[] = [];
-    if (data && data.length) {
-        patientList = data.map((patient: any, idx: number) => {
-            const patientUrl = facilityId ? `/facility/${facilityId}/patient/${patient.id}` : `/patient/${patient.id}`;
-            return (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={`usr_${patient.id}`} className={classes.root}>
-                    <Card className={classes.card} onClick={() => navigate(patientUrl)}>
-                        <CardHeader
-                            className={classes.cardHeader}
-                            title={
-                                <span className={classes.title}>
-                                    <Tooltip
-                                        title={<span className={classes.toolTip}>{patient.name}</span>}
-                                        interactive={true}>
-                                        <span>{patient.name}</span>
-                                    </Tooltip>
-                                </span>
-                            }
-                        />
-                        <CardContent className={classes.content}>
-                            <Box>
-                                <span className={`w3-text-gray ${classes.userCardSideTitle}`}>Age - </span>
-                                <span>{patient.age}</span>
-                            </Box>
-                        </CardContent>
-                        <CardContent className={classes.content}>
-                            <Box>
-                                <span className={`w3-text-gray ${classes.userCardSideTitle}`}>Contact with carrier - </span>
-                                <span>{patient.contact_with_carrier ? "Yes" : "No"}</span>
-                            </Box>
-                        </CardContent>
-                        <CardContent className={classes.content}>
-                            <Box>
-                                <span className={`w3-text-gray ${classes.userCardSideTitle}`}>Status - </span>
-                                <span>{patient.is_active ? "Active" : "Inactive"}</span>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            );
-        });
-    }
-
-    if (isLoading || !data) {
-        managePatients = (
-            <Loading />
-        );
-    } else if (data && data.length) {
-        managePatients = (
-            <>
-                {patientList}
-                {(totalCount > limit) && (
-                    <Grid container className={`w3-center ${classes.paginateTopPadding}`}>
-                        <Pagination
-                            cPage={currentPage}
-                            defaultPerPage={limit}
-                            data={{ totalCount }}
-                            onChange={handlePagination}
-                        />
-                    </Grid>
+  let patientList: any[] = [];
+  if (data && data.length) {
+    patientList = data.map((patient: any, idx: number) => {
+      const patientUrl = patient.facility
+        ? `/facility/${patient.facility}/patient/${patient.id}`
+        : `/patient/${patient.id}`;
+      return (
+        <div key={`usr_${patient.id}`} className="w-full md:w-1/2 mt-4 px-2">
+          <div
+            onClick={() => navigate(patientUrl)}
+            className="overflow-hidden shadow-lg block border rounded-lg bg-white h-full cursor-pointer hover:border-primary-500"
+          >
+            <div className="px-6 py-4 h-full flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between">
+                  <div className="font-bold text-xl capitalize mb-2">
+                    {patient.name}
+                  </div>
+                  <div>
+                    {patient.is_medical_worker && patient.is_active && (
+                      <span className="badge badge-pill badge-primary">
+                        Medical Worker
+                      </span>
+                    )}
+                    {!patient.is_active && (
+                      <span className="badge badge-pill badge-dark">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="font-semibold leading-relaxed">Age: </span>
+                  {patient.age}
+                </div>
+                {
+                  patient.facility &&
+                  <div>
+                    <span className="font-semibold leading-relaxed">Facility: </span>
+                    {(patient && patient.facility_object && patient.facility_object.name) || ''}
+                  </div>
+                }
+                {patient.contact_with_confirmed_carrier && (
+                  <div className="flex">
+                    <span className="font-semibold leading-relaxed">
+                      Contact with confirmed carrier
+                    </span>
+                    <WarningRoundedIcon className="text-red-500"></WarningRoundedIcon>
+                  </div>
                 )}
-            </>
-        );
-
-    } else if (data && data.length === 0) {
-        managePatients = (
-            <Grid item xs={12} md={12} className={classes.displayFlex}>
-                <Grid container justify="center" alignItems="center">
-                    <h5> No Patients Found</h5>
-                </Grid>
-            </Grid>
-        );
-    }
-
-    return (
-        <div>
-            <TitleHeader title="Patients" showSearch={false}>
-
-            </TitleHeader>
-
-            <Grid container>
-                {managePatients}
-            </Grid>
+                {patient.contact_with_suspected_carrier &&
+                  !patient.contact_with_confirmed_carrier && (
+                    <div className="flex">
+                      <span className="font-semibold leading-relaxed">
+                        Contact with suspected carrier
+                      </span>
+                      <WarningRoundedIcon className="text-yellow-500"></WarningRoundedIcon>
+                    </div>
+                  )}
+                <div>
+                  {patient.countries_travelled && (<>
+                    <span className="font-semibold leading-relaxed">
+                      Travel History:{" "}
+                    </span>
+                    {patient.countries_travelled.split(",").join(", ")}
+                  </>)}
+                </div>
+              </div>
+              <div className="mt-2">
+                <Button size="small" variant="outlined" fullWidth>
+                  View Patient Details
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-    );
+      );
+    });
+  }
 
+  if (isLoading || !data) {
+    managePatients = <Loading />;
+  } else if (data && data.length) {
+    managePatients = (
+      <>
+        {patientList}
+        {totalCount > limit && (
+          <Grid container className={`w3-center ${classes.paginateTopPadding}`}>
+            <Pagination
+              cPage={currentPage}
+              defaultPerPage={limit}
+              data={{ totalCount }}
+              onChange={handlePagination}
+            />
+          </Grid>
+        )}
+      </>
+    );
+  } else if (data && data.length === 0) {
+    managePatients = (
+      <Grid item xs={12} md={12} className={classes.displayFlex}>
+        <Grid container justify="center" alignItems="center">
+          <h5> No Covid Suspects Found</h5>
+        </Grid>
+      </Grid>
+    );
+  }
+
+  return (
+    <div className="px-2">
+      <PageTitle title="Covid Suspects" hideBack={!facilityId} />
+
+      <div className="flex flex-wrap mt-4">{managePatients}</div>
+    </div>
+  );
 };

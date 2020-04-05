@@ -49,6 +49,7 @@ export const FACILITY_ID = {
 export const BED_TYPES: Array<OptionsType> = [
   { id: 1, text: "Normal" },
   { id: 2, text: "Hostel" },
+  { id: 3, text: "Single Room with Attached Bathroom"},
   { id: 10, text: "ICU" },
   { id: 20, text: "Ventilator" }
 ];
@@ -70,11 +71,15 @@ export const MEDICAL_HISTORY_CHOICES: Array<OptionsType> = [
 ];
 
 export const SYMPTOM_CHOICES: Array<OptionsType> = [
-  { id: 1, text: "NO" },
+  { id: 1, text: "ASYMPTOMATIC" },
   { id: 2, text: "FEVER" },
   { id: 3, text: "SORE THROAT" },
   { id: 4, text: "COUGH" },
-  { id: 5, text: "BREATHLESSNESS" }
+  { id: 5, text: "BREATHLESSNESS" },
+  { id: 6, text: "MYALGIA" },
+  { id: 7, text: "ABDOMINAL DISCOMFORT" },
+  { id: 8, text: "VOMITING/DIARRHOEA" },
+  { id: 9, text: "OTHERS" },
 ];
 
 export const GENDER_TYPES: Array<OptionsType> = [
@@ -92,25 +97,37 @@ export const AMBULANCE_FREE_SERVICE_CONSENT =
 export const AMBULANCE_SERVICE_FEE_TEXT =
   "I / we will require fees for providing service";
 
-export const SAMPLE_TEST_STATUS = [
-  {id:1,text:"REQUEST_SUBMITTED"},
-  {id:2,text:"APPROVED"},
-  {id:3,text:"DENIED"},
-  {id:4,text:"SENT_TO_COLLECTON_CENTRE"},
-  {id:5,text:"RECEIVED_AND_FORWARED"},
-  {id:6,text:"RECEIVED_AT_LAB"},
-  {id:7,text:"COMPLETED"},
-];
+export const SAMPLE_TEST_STATUS = {
+  REQUEST_SUBMITTED: "Request Submitted",
+  APPROVED: "Approved for Sample Collection",
+  DENIED: "Denied",
+  SENT_TO_COLLECTON_CENTRE: "Sample taken and sent to collection centre",
+  RECEIVED_AND_FORWARED: "Received And Forwarded",
+  RECEIVED_AT_LAB: "Received At Lab",
+  COMPLETED: "Completed",
+};
 
 export const SAMPLE_TEST_RESULT = [
-  {id:1,text:"POSITIVE"},
-  {id:2,text:"NEGATIVE"},
-  {id:3,text:"AWAITING"},
-  {id:4,text:"INVALID"},
+  { id: 1, text: "POSITIVE" },
+  { id: 2, text: "NEGATIVE" },
+  { id: 3, text: "AWAITING" },
+  { id: 4, text: "INVALID" },
 ];
 
 export const CONSULTATION_SUGGESTION = [
-  {id:1,text:"HI"},
-  {id:2,text:"A"},
-  {id:3,text:"R"},
+  { id: "HI", text: "Home Isolation" },
+  { id: "A", text: "Admission" },
+  { id: "R", text: "Refer to another Hospital" },
+];
+
+export const ADMITTED_TO = [
+  "Isolation Room",
+  "ICU",
+  "ICU with Ventilator",
+];
+
+export const PATIENT_CATEGORY = [
+  { id: "Category-A", text: "Mild (Category A)" },
+  { id: "Category-B", text: "Moderate (Category B)" },
+  { id: "Category-C", text: "Severe (Category C)" }
 ];

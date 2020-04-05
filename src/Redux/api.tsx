@@ -101,13 +101,22 @@ export default {
         path: '/api/v1/consultation/{id}/',
         method: 'DELETE'
     },
-
+createDailyRounds:{
+    path: '/api/v1/consultation/{consultationId}/daily_rounds/',
+    method: 'POST'
+},
+    getDailyReports:{
+        path: '/api/v1/consultation/{consultationId}/daily_rounds',
+    },
     // Ambulance
 
     createAmbulance: {
-        path: '/api/v1/ambulance/',
+        path: '/api/v1/ambulance/create/',
         method: 'POST',
         noAuth: true,
+    },
+    listAmbulance: {
+        path: '/api/v1/ambulance',
     },
 
     // Hospital Beds
@@ -138,6 +147,16 @@ export default {
         path: '/api/v1/facility/{facilityId}/hospital_doctor',
         method: 'PUT'
     },
+    
+    //Triage
+    createTriage:{
+        path:'/api/v1/facility/{facilityId}/patient_stats/',
+        method:'POST'
+    },
+    getTriage:{
+        path:'/api/v1/facility/{facilityId}/patient_stats',
+    },
+
     // //Care Center
     // createCenter: {
     //     path: "/api/v1/carecenter/",
@@ -205,4 +224,18 @@ export default {
     getLocalbodyByDistrict: {
         path: "/api/v1/district/{id}/local_bodies/",
     },
+
+    // Test Sample
+    getTestSampleList: {
+        path: '/api/v1/test_sample'
+    },
+    getTestSample: {
+        path: '/api/v1/test_sample',
+        method: 'POST'
+    },
+    patchSample: {
+        path:'/api/v1/test_sample',
+        method:'PATCH',
+    },
+
 }

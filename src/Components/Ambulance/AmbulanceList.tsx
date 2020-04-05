@@ -3,7 +3,7 @@ import { makeStyles } from "@material-ui/core/styles";
 import React, { useCallback, useState } from "react";
 import { useDispatch } from "react-redux";
 import { statusType, useAbortableEffect } from "../../Common/utils";
-import { getUserList } from "../../Redux/actions";
+import { getAmbulanceList } from "../../Redux/actions";
 import { Loading } from "../Common/Loading";
 import PageTitle from "../Common/PageTitle";
 import Pagination from "../Common/Pagination";
@@ -77,12 +77,12 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default function ManageUsers(props: any) {
+export default function AmbulanceList(props: any) {
   const classes = useStyles();
   const dispatch: any = useDispatch();
   const initialData: any[] = [];
-  let manageUsers: any = null;
-  const [users, setUsers] = useState(initialData);
+  let manageAmbulances: any = null;
+  const [ambulances, setAmbulances] = useState(initialData);
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,10 +93,10 @@ export default function ManageUsers(props: any) {
   const fetchData = useCallback(
     async (status: statusType) => {
       setIsLoading(true);
-      const res = await dispatch(getUserList({ limit, offset }));
+      const res = await dispatch(getAmbulanceList({ limit, offset }));
       if (!status.aborted) {
         if (res && res.data) {
-          setUsers(res.data.results);
+          setAmbulances(res.data.results);
           setTotalCount(res.data.count);
         }
         setIsLoading(false);
@@ -118,11 +118,11 @@ export default function ManageUsers(props: any) {
     setOffset(offset);
   };
 
-  let userList: any[] = [];
-  if (users && users.length) {
-    userList = users.map((user: any, idx: number) => {
+  let ambulanceList: any[] = [];
+  if (ambulances && ambulances.length) {
+    ambulanceList = ambulances.map((ambulance: any, idx: number) => {
       return (
-        <div key={`usr_${user.id}`} className="w-full md:w-1/2 mt-4 px-2">
+        <div key={`usr_${ambulance.id}`} className="w-full md:w-1/2 mt-4 px-2">
           <div className="block border rounded-lg bg-white shadow h-full cursor-pointer hover:border-primary-500 text-black">
             <CardHeader
               className={classes.cardHeader}
@@ -130,11 +130,13 @@ export default function ManageUsers(props: any) {
                 <span className={classes.title}>
                   <Tooltip
                     title={
-                      <span className={classes.toolTip}>{user.username}</span>
+                      <span className={classes.toolTip}>
+                        {ambulance.vehicle_number}
+                      </span>
                     }
                     interactive={true}
                   >
-                    <span>{user.username}</span>
+                    <span>{ambulance.vehicle_number}</span>
                   </Tooltip>
                 </span>
               }
@@ -142,43 +144,31 @@ export default function ManageUsers(props: any) {
             <CardContent className={classes.content}>
               <Typography>
                 <span className={`w3-text-gray ${classes.userCardSideTitle}`}>
-                  Full Name:{" "}
+                  Owner Name{" "}
                 </span>
-                {`${user.first_name} ${user.last_name}`}
+                {ambulance.owner_name}
               </Typography>
             </CardContent>
-            {user.user_type && (
-              <CardContent className={classes.content}>
-                <Typography>
-                  <span className={`w3-text-gray ${classes.userCardSideTitle}`}>
-                    Role:{" "}
-                  </span>
-                  {user.user_type}
-                </Typography>
-              </CardContent>
-            )}
-            {user.phone_number && (
-              <CardContent className={classes.content}>
-                <Typography>
-                  <span className={`w3-text-gray ${classes.userCardSideTitle}`}>
-                    Contact:{" "}
-                  </span>
-                  {user.phone_number}
-                </Typography>
-              </CardContent>
-            )}
+            <CardContent className={classes.content}>
+              <Typography>
+                <span className={`w3-text-gray ${classes.userCardSideTitle}`}>
+                  Owner Number{" "}
+                </span>
+                {ambulance.owner_phone_number}
+              </Typography>
+            </CardContent>
           </div>
         </div>
       );
     });
   }
 
-  if (isLoading || !users) {
-    manageUsers = <Loading />;
-  } else if (users && users.length) {
-    manageUsers = (
+  if (isLoading || !ambulances) {
+    manageAmbulances = <Loading />;
+  } else if (ambulances && ambulances.length) {
+    manageAmbulances = (
       <>
-        {userList}
+        {ambulanceList}
         {totalCount > limit && (
           <Grid container className={`w3-center ${classes.paginateTopPadding}`}>
             <Pagination
@@ -191,18 +181,22 @@ export default function ManageUsers(props: any) {
         )}
       </>
     );
-  } else if (users && users.length === 0) {
-    manageUsers = (
+  } else if (ambulances && ambulances.length === 0) {
+    manageAmbulances = (
       <Grid item xs={12} md={12} className="textMarginCenter">
-        <h5> No Users Found</h5>
+        <h5 style={{ color: "red" }}>
+          {" "}
+          You are not Authorised to access this Page
+        </h5>
       </Grid>
     );
   }
 
   return (
     <div>
-      <PageTitle title="Users" hideBack={true} />
-      <div className="flex flex-wrap mt-4">{manageUsers}</div>
+      <PageTitle title="Ambulances" hideBack={true} />
+
+      <div className="flex flex-wrap mt-4">{manageAmbulances}</div>
     </div>
   );
 }
