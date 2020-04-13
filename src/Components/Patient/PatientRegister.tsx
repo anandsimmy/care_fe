@@ -1,18 +1,22 @@
 import { Box, Button, Card, CardContent, CircularProgress, FormControlLabel, InputLabel, Radio, RadioGroup } from "@material-ui/core";
 import CheckCircleOutlineIcon from '@material-ui/icons/CheckCircleOutline';
 import { navigate } from "hookrouter";
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
+import { debounce } from "lodash";
+import moment from "moment";
 import React, { useCallback, useReducer, useState } from "react";
 import { useDispatch } from "react-redux";
-import { GENDER_TYPES, MEDICAL_HISTORY_CHOICES } from "../../Common/constants";
+import { BLOOD_GROUPS, DISEASE_STATUS, GENDER_TYPES, MEDICAL_HISTORY_CHOICES } from "../../Common/constants";
 import countryList from "../../Common/static/countries.json";
 import { statusType, useAbortableEffect } from "../../Common/utils";
-import { phonePreg } from "../../Common/validation";
-import { createPatient, getDistrictByState, getLocalbodyByDistrict, getPatient, getStates, updatePatient } from "../../Redux/actions";
+import { createPatient, getDistrictByState, getLocalbodyByDistrict, getPatient, getStates, searchPatient, updatePatient } from "../../Redux/actions";
 import * as Notification from "../../Utils/Notifications.js";
 import AlertDialog from "../Common/AlertDialog";
-import { AutoCompleteMultiField, CheckboxField, DateInputField, MultilineInputField, SelectField, TextInputField } from "../Common/HelperInputFields";
+import { AutoCompleteMultiField, CheckboxField, DateInputField, MultilineInputField, PhoneNumberField, SelectField, TextInputField } from "../Common/HelperInputFields";
 import { Loading } from "../Common/Loading";
 import PageTitle from "../Common/PageTitle";
+import DuplicatePatientDialog from "../Facility/DuplicatePatientDialog";
+import { DupPatientModel } from "../Facility/models";
 import { PatientModel } from "./models";
 
 interface PatientRegisterProps extends PatientModel {
@@ -31,12 +35,29 @@ let medicalHistoryChoices: any = {};
 
 medicalHistoryTypes.forEach(i => medicalHistoryChoices[`medical_history_${i.id}`] = "");
 
+const genderTypes = [
+  {
+    id: 0,
+    text: "Select"
+  },
+  ...GENDER_TYPES
+];
+
+const diseaseStatus = [...DISEASE_STATUS];
+
+const bloodGroups = [...BLOOD_GROUPS];
+
 const initForm: any = {
   name: "",
   age: "",
   gender: "",
   phone_number: "",
+  blood_group: "",
+  disease_status: diseaseStatus[0],
+  date_of_birth: null,
   medical_history: [],
+  nationality: "India",
+  passport_no: "",
   state: "",
   district: "",
   local_body: "",
@@ -52,6 +73,8 @@ const initForm: any = {
   prescribed_medication: false,
   ongoing_medication: "",
   is_medical_worker: "false",
+  number_of_aged_dependents: "",
+  number_of_chronic_diseased_dependents: "",
   ...medicalHistoryChoices
 };
 
@@ -87,14 +110,6 @@ const patientFormReducer = (state = initialState, action: any) => {
   }
 };
 
-const genderTypes = [
-  {
-    id: 0,
-    text: "Select"
-  },
-  ...GENDER_TYPES
-];
-
 const goBack = () => {
   window.history.go(-1);
 };
@@ -115,6 +130,7 @@ export const PatientRegister = (props: PatientRegisterProps) => {
   const [states, setStates] = useState(initialStates);
   const [districts, setDistricts] = useState(selectStates);
   const [localBody, setLocalBody] = useState(selectDistrict);
+  const [statusDialog, setStatusDialog] = useState<{ show: boolean; patientList: Array<DupPatientModel> }>({ show: false, patientList: [] });
 
   const headerText = !id ? "Add Details of Covid Suspect / Patient" : "Update Covid Suspect / Patient Details";
   const buttonText = !id ? "Add Covid Suspect / Patient" : "Save Details";
@@ -157,9 +173,11 @@ export const PatientRegister = (props: PatientRegisterProps) => {
         if (res && res.data) {
           const formData = {
             ...res.data,
+            nationality: res.data.nationality ? res.data.nationality : "India",
             gender: res.data.gender ? res.data.gender : "",
             state: res.data.state ? res.data.state : "",
             district: res.data.district ? res.data.district : "",
+            blood_group: res.data.blood_group ? res.data.blood_group : "",
             is_medical_worker: String(res.data.is_medical_worker),
             local_body: res.data.local_body ? res.data.local_body : "",
             medical_history: [],
@@ -220,23 +238,34 @@ export const PatientRegister = (props: PatientRegisterProps) => {
     Object.keys(state.form).forEach((field, i) => {
       switch (field) {
         case "name":
-        case "age":
         case "gender":
           if (!state.form[field]) {
             errors[field] = "Field is required";
             invalidForm = true;
           }
           return;
+        case "date_of_birth":
+          if (!state.form[field]) {
+            errors[field] = "Please enter date in DD/MM/YYYY format";
+            invalidForm = true;
+          }
+          return;
         case "state":
-          if (!Number(state.form[field])) {
-            errors[field] = "Field is required";
+          if (state.form.nationality === "India" && !Number(state.form[field])) {
+            errors[field] = "Please enter the state";
+            invalidForm = true;
+          }
+          return;
+        case "passport_no":
+          if (state.form.nationality !== "India" && !state.form[field]) {
+            errors[field] = "Please enter the passport number";
             invalidForm = true;
           }
           return;
         case "phone_number":
-          if (!phonePreg(state.form[field])) {
-            errors[field] =
-              "Please Enter 10/11 digit mobile number or landline as 0<std code><phone number>";
+          const phoneNumber = parsePhoneNumberFromString(state.form[field]);
+          if (!state.form[field] || !phoneNumber?.isPossible()) {
+            errors[field] = "Please enter valid phone number";
             invalidForm = true;
           }
           return;
@@ -253,10 +282,11 @@ export const PatientRegister = (props: PatientRegisterProps) => {
           }
           return;
         case "estimated_contact_date":
-          if ((JSON.parse(state.form.contact_with_confirmed_carrier) || JSON.parse(state.form.contact_with_suspected_carrier))
-            && !state.form[field]) {
-            errors[field] = "Please enter the estimated date of contact";
-            invalidForm = true;
+          if ((JSON.parse(state.form.contact_with_confirmed_carrier) || JSON.parse(state.form.contact_with_suspected_carrier))) {
+            if (!state.form[field]) {
+              errors[field] = "Please enter the estimated date of contact";
+              invalidForm = true;
+            }
           }
           return;
         default:
@@ -276,9 +306,10 @@ export const PatientRegister = (props: PatientRegisterProps) => {
       state.form.medical_history.forEach((id: number) => {
         const medData = medicalHistoryTypes.find(i => i.id === id);
         if (medData) {
+          const details = state.form[`medical_history_${medData.id}`];
           medical_history.push({
             disease: medData.text,
-            details: state.form[`medical_history_${medData.id}`]
+            details: details ? details : "",
           });
         }
       });
@@ -286,13 +317,17 @@ export const PatientRegister = (props: PatientRegisterProps) => {
         medical_history.push({ disease: "NO", details: "" });
       }
       const data = {
+        phone_number: parsePhoneNumberFromString(state.form.phone_number)?.format('E.164'),
+        date_of_birth: moment(state.form.date_of_birth).format('YYYY-MM-DD'),
+        age: Number(moment().diff(state.form.date_of_birth, 'years', false)),
+        disease_status: state.form.disease_status,
         name: state.form.name,
-        age: Number(state.form.age),
         gender: Number(state.form.gender),
-        phone_number: state.form.phone_number,
-        state: state.form.state,
-        district: state.form.district,
-        local_body: state.form.local_body,
+        nationality: state.form.nationality,
+        passport_no: state.form.nationality !== "India" ? state.form.passport_no : undefined,
+        state: state.form.nationality === "India" ? state.form.state : undefined,
+        district: state.form.nationality === "India" ? state.form.district : undefined,
+        local_body: state.form.nationality === "India" ? state.form.local_body : undefined,
         address: state.form.address ? state.form.address : undefined,
         present_health: state.form.present_health ? state.form.present_health : undefined,
         contact_with_confirmed_carrier: JSON.parse(state.form.contact_with_confirmed_carrier),
@@ -304,6 +339,9 @@ export const PatientRegister = (props: PatientRegisterProps) => {
         has_SARI: state.form.has_SARI,
         ongoing_medication: state.form.ongoing_medication,
         is_medical_worker: JSON.parse(state.form.is_medical_worker),
+        blood_group: state.form.blood_group ? state.form.blood_group : undefined,
+        number_of_aged_dependents: Number(state.form.number_of_aged_dependents),
+        number_of_chronic_diseased_dependents: Number(state.form.number_of_chronic_diseased_dependents),
         medical_history,
         is_active: true
       };
@@ -320,11 +358,12 @@ export const PatientRegister = (props: PatientRegisterProps) => {
             message: `Please note down patient name: ${state.form.name} and patient ID: ${res.data.id}`,
             title: "Patient Added Successfully"
           });
+          navigate(`/facility/${facilityId}/patient/${res.data.id}`);
         } else {
           Notification.Success({
             msg: "Patient updated successfully"
           });
-          navigate(`/facility/${facilityId}/patient/${res.data.id}`);
+          goBack();
         }
       }
     }
@@ -336,16 +375,18 @@ export const PatientRegister = (props: PatientRegisterProps) => {
     dispatch({ type: "set_form", form });
   };
 
-  const handleCountryChange = (event: object, value: any, reason: string) => {
+  const handleValueChange = (value: any, name: string) => {
     const form = { ...state.form };
-    form.countries_travelled = value;
+    form[name] = value;
     dispatch({ type: "set_form", form });
-  }
+  };
 
   const handleDateChange = (date: any, field: string) => {
-    const form = { ...state.form };
-    form[field] = date;
-    dispatch({ type: "set_form", form });
+    if (moment(date).isValid()) {
+      const form = { ...state.form };
+      form[field] = date;
+      dispatch({ type: "set_form", form });
+    }
   };
 
   const handleCheckboxFieldChange = (e: any) => {
@@ -365,6 +406,39 @@ export const PatientRegister = (props: PatientRegisterProps) => {
     }
     form["medical_history"] = values;
     dispatch({ type: "set_form", form });
+  };
+
+  const duplicateCheck = async (status: statusType) => {
+    const { phone_number, date_of_birth } = state.form;
+    if (phone_number && date_of_birth && parsePhoneNumberFromString(phone_number)?.isPossible() && moment(date_of_birth).isValid()) {
+      const query = {
+        phone_number: parsePhoneNumberFromString(phone_number)?.format('E.164'),
+        date_of_birth: moment(date_of_birth).format('YYYY-MM-DD')
+      };
+      const res = await dispatchAction(searchPatient(query))
+      if (!status.aborted && res && res.data && res.data.results) {
+        const duplicateList = !id ? res.data.results : res.data.results.filter((item: DupPatientModel) => Number(item.patient_id) !== Number(id));
+        if (duplicateList.length) {
+          setStatusDialog({
+            show: true,
+            patientList: duplicateList
+          });
+        }
+      }
+    }
+  }
+
+  const duplicateCheckHandler = useCallback(debounce(duplicateCheck, 500), [state.form.phone_number, state.form.date_of_birth]);
+
+  useAbortableEffect(
+    (status: statusType) => {
+      duplicateCheckHandler(status);
+    },
+    [state.form.phone_number, state.form.date_of_birth]
+  );
+
+  const dismissStatusDialog = () => {
+    setStatusDialog({ show: false, patientList: [] })
   };
 
   const renderMedicalHistory = (id: number, title: string) => {
@@ -389,7 +463,6 @@ export const PatientRegister = (props: PatientRegisterProps) => {
               variant="outlined"
               margin="dense"
               type="text"
-              InputLabelProps={{ shrink: !!state.form.textField }}
               value={state.form.textField}
               onChange={handleChange}
               errors={state.errors[textField]}
@@ -406,6 +479,12 @@ export const PatientRegister = (props: PatientRegisterProps) => {
 
   return (
     <div>
+      {statusDialog.show && (<DuplicatePatientDialog
+        patientList={statusDialog.patientList}
+        handleOk={dismissStatusDialog}
+        handleCancel={goBack}
+        isNew={!id}
+      />)}
       <PageTitle title={headerText} />
       <div className="mt-4">
         <Card>
@@ -421,6 +500,29 @@ export const PatientRegister = (props: PatientRegisterProps) => {
             <form onSubmit={e => handleSubmit(e)}>
               <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                 <div>
+                  <PhoneNumberField
+                    label="Phone Number*"
+                    value={state.form.phone_number}
+                    onChange={(value: any) => handleValueChange(value, 'phone_number')}
+                    errors={state.errors.phone_number}
+                  />
+                </div>
+
+                <div>
+                  <InputLabel id="date_of_birth-label">Date of birth*</InputLabel>
+                  <DateInputField
+                    fullWidth={true}
+                    value={state.form.date_of_birth}
+                    onChange={date => handleDateChange(date, "date_of_birth")}
+                    errors={state.errors.date_of_birth}
+                    inputVariant="outlined"
+                    margin="dense"
+                    openTo="year"
+                    disableFuture={true}
+                  />
+                </div>
+
+                <div>
                   <InputLabel id="name-label">Name*</InputLabel>
                   <TextInputField
                     name="name"
@@ -432,18 +534,21 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                     errors={state.errors.name}
                   />
                 </div>
+
                 <div>
-                  <InputLabel id="age-label">Age*</InputLabel>
-                  <TextInputField
-                    name="age"
+                  <InputLabel id="disease_status-label">Disease Status*</InputLabel>
+                  <SelectField
+                    name="disease_status"
                     variant="outlined"
                     margin="dense"
-                    type="number"
-                    value={state.form.age}
+                    optionArray={true}
+                    value={state.form.disease_status}
+                    options={diseaseStatus}
                     onChange={handleChange}
-                    errors={state.errors.age}
+                    errors={state.errors.disease_status}
                   />
                 </div>
+
                 <div>
                   <InputLabel id="gender-label">Gender*</InputLabel>
                   <SelectField
@@ -456,114 +561,9 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                     errors={state.errors.gender}
                   />
                 </div>
-                <div>
-                  <InputLabel id="phone-label">Mobile Number*</InputLabel>
-                  <TextInputField
-                    name="phone_number"
-                    variant="outlined"
-                    margin="dense"
-                    type="number"
-                    value={state.form.phone_number}
-                    onChange={handleChange}
-                    errors={state.errors.phone_number}
-                  />
-                </div>
 
                 <div>
-                  <InputLabel id="address-label">Address</InputLabel>
-                  <MultilineInputField
-                    rows={2}
-                    name="address"
-                    variant="outlined"
-                    margin="dense"
-                    type="text"
-                    placeholder="Optional Information"
-                    InputLabelProps={{ shrink: !!state.form.address }}
-                    value={state.form.address}
-                    onChange={handleChange}
-                    errors={state.errors.address}
-                  />
-                </div>
-
-                <div>
-                  <InputLabel id="present_health-label">Present Health</InputLabel>
-                  <MultilineInputField
-                    rows={2}
-                    name="present_health"
-                    variant="outlined"
-                    margin="dense"
-                    type="text"
-                    placeholder="Optional Information"
-                    InputLabelProps={{ shrink: !!state.form.present_health }}
-                    value={state.form.present_health}
-                    onChange={handleChange}
-                    errors={state.errors.present_health}
-                  />
-                </div>
-
-                <div>
-                  <InputLabel id="gender-label">State*</InputLabel>
-                  {isStateLoading ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                      <SelectField
-                        name="state"
-                        variant="outlined"
-                        margin="dense"
-                        value={state.form.state}
-                        options={states}
-                        optionValue="name"
-                        onChange={e => [
-                          handleChange(e),
-                          fetchDistricts(String(e.target.value))
-                        ]}
-                        errors={state.errors.state}
-                      />
-                    )}
-                </div>
-
-                <div>
-                  <InputLabel id="gender-label">District</InputLabel>
-                  {isDistrictLoading ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                      <SelectField
-                        name="district"
-                        variant="outlined"
-                        margin="dense"
-                        value={state.form.district}
-                        options={districts}
-                        optionValue="name"
-                        onChange={e => [
-                          handleChange(e),
-                          fetchLocalBody(String(e.target.value))
-                        ]}
-                        errors={state.errors.district}
-                      />
-                    )}
-                </div>
-
-                <div className="md:col-span-2">
-                  <InputLabel id="gender-label">Localbody</InputLabel>
-                  {isLocalbodyLoading ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                      <SelectField
-                        name="local_body"
-                        variant="outlined"
-                        margin="dense"
-                        value={state.form.local_body}
-                        options={localBody}
-                        optionValue="name"
-                        onChange={handleChange}
-                        errors={state.errors.local_body}
-                      />
-                    )}
-                </div>
-                <div>
-                  <InputLabel id="is_medical_worker">
-                    Medical Worker
-                  </InputLabel>
+                  <InputLabel id="is_medical_worker">Medical Worker</InputLabel>
                   <RadioGroup
                     aria-label="is_medical_worker"
                     name="is_medical_worker"
@@ -585,8 +585,125 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                     </Box>
                   </RadioGroup>
                 </div>
+
+                <div>
+                  <InputLabel id="nationality-label">Nationality*</InputLabel>
+                  <SelectField
+                    name="nationality"
+                    variant="outlined"
+                    margin="dense"
+                    optionArray={true}
+                    value={state.form.nationality}
+                    options={countryList}
+                    onChange={handleChange}
+                    errors={state.errors.nationality}
+                  />
+                </div>
+
+                {state.form.nationality === 'India' ? (<>
+                  <div>
+                    <InputLabel id="gender-label">State*</InputLabel>
+                    {isStateLoading ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                        <SelectField
+                          name="state"
+                          variant="outlined"
+                          margin="dense"
+                          value={state.form.state}
+                          options={states}
+                          optionValue="name"
+                          onChange={e => [
+                            handleChange(e),
+                            fetchDistricts(String(e.target.value))
+                          ]}
+                          errors={state.errors.state}
+                        />
+                      )}
+                  </div>
+
+                  <div>
+                    <InputLabel id="district-label">District</InputLabel>
+                    {isDistrictLoading ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                        <SelectField
+                          name="district"
+                          variant="outlined"
+                          margin="dense"
+                          value={state.form.district}
+                          options={districts}
+                          optionValue="name"
+                          onChange={e => [
+                            handleChange(e),
+                            fetchLocalBody(String(e.target.value))
+                          ]}
+                          errors={state.errors.district}
+                        />
+                      )}
+                  </div>
+
+                  <div>
+                    <InputLabel id="local_body-label">Localbody</InputLabel>
+                    {isLocalbodyLoading ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                        <SelectField
+                          name="local_body"
+                          variant="outlined"
+                          margin="dense"
+                          value={state.form.local_body}
+                          options={localBody}
+                          optionValue="name"
+                          onChange={handleChange}
+                          errors={state.errors.local_body}
+                        />
+                      )}
+                  </div>
+                </>) : (<div>
+                  <InputLabel id="passport-label">Passport Number*</InputLabel>
+                  <TextInputField
+                    name="passport_no"
+                    variant="outlined"
+                    margin="dense"
+                    value={state.form.passport_no}
+                    onChange={handleChange}
+                    errors={state.errors.passport_no}
+                  />
+                </div>)}
+
+                <div>
+                  <InputLabel id="address-label">Address</InputLabel>
+                  <MultilineInputField
+                    rows={2}
+                    name="address"
+                    variant="outlined"
+                    margin="dense"
+                    type="text"
+                    placeholder="Optional Information"
+                    value={state.form.address}
+                    onChange={handleChange}
+                    errors={state.errors.address}
+                  />
+                </div>
+
+                <div>
+                  <InputLabel id="blood_group-label">Blood Group</InputLabel>
+                  <SelectField
+                    name="blood_group"
+                    variant="outlined"
+                    margin="dense"
+                    showEmpty={true}
+                    optionArray={true}
+                    value={state.form.blood_group}
+                    options={bloodGroups}
+                    onChange={handleChange}
+                    errors={state.errors.blood_group}
+                  />
+                </div>
               </div>
-              <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+
+              <div className="grid gap-4 grid-cols-1 md:grid-cols-2 mt-4">
                 <div>
                   <InputLabel id="contact_with_confirmed_carrier">
                     Contact with confirmed Covid patient?
@@ -641,11 +758,13 @@ export const PatientRegister = (props: PatientRegisterProps) => {
 
                 {(JSON.parse(state.form.contact_with_confirmed_carrier) || JSON.parse(state.form.contact_with_suspected_carrier)) && (<div>
                   <DateInputField
+                    fullWidth={true}
                     label="Esimate date of contact*"
                     value={state.form.estimated_contact_date}
                     onChange={date => handleDateChange(date, "estimated_contact_date")}
                     errors={state.errors.estimated_contact_date}
                     inputVariant="outlined"
+                    margin="dense"
                     disableFuture={true}
                   />
                 </div>)}
@@ -667,23 +786,27 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                       label="Countries / Places Visited* (including transit stops)"
                       variant="outlined"
                       placeholder="Select country or enter the place of visit"
-                      onChange={handleCountryChange}
+                      onChange={(e: object, value: any) => handleValueChange(value, 'countries_travelled')}
                       value={state.form.countries_travelled}
                       errors={state.errors.countries_travelled}
                     />
                   </div>
-                  <div className="md:col-span-2">
+                  <div>
                     <DateInputField
+                      fullWidth={true}
                       label="Estimated date of return*"
                       value={state.form.date_of_return}
                       onChange={date => handleDateChange(date, "date_of_return")}
                       errors={state.errors.date_of_return}
                       inputVariant="outlined"
+                      margin="dense"
                       disableFuture={true}
                     />
                   </div>
                 </>)}
+              </div>
 
+              <div className="grid gap-4 grid-cols-1 md:grid-cols-2 mt-4">
                 <div className="md:col-span-2">
                   <CheckboxField
                     checked={state.form.has_SARI}
@@ -692,7 +815,6 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                     label="Does the person have SARI (Severe Acute Respiratory illness)?"
                   />
                 </div>
-
 
                 <div className="md:col-span-2">
                   <InputLabel id="med-history-label">
@@ -706,6 +828,21 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                 </div>
 
                 <div>
+                  <InputLabel id="present_health-label">Present Health</InputLabel>
+                  <MultilineInputField
+                    rows={2}
+                    name="present_health"
+                    variant="outlined"
+                    margin="dense"
+                    type="text"
+                    placeholder="Optional Information"
+                    value={state.form.present_health}
+                    onChange={handleChange}
+                    errors={state.errors.present_health}
+                  />
+                </div>
+
+                <div>
                   <InputLabel id="ongoing_medication-label">Ongoing Medication</InputLabel>
                   <MultilineInputField
                     rows={2}
@@ -714,13 +851,37 @@ export const PatientRegister = (props: PatientRegisterProps) => {
                     margin="dense"
                     type="text"
                     placeholder="Optional Information"
-                    InputLabelProps={{ shrink: !!state.form.ongoing_medication }}
                     value={state.form.ongoing_medication}
                     onChange={handleChange}
                     errors={state.errors.ongoing_medication}
                   />
                 </div>
 
+                <div>
+                  <InputLabel id="number_of_aged_dependents-label">Number Of Aged Dependents (Above 60)</InputLabel>
+                  <TextInputField
+                    name="number_of_aged_dependents"
+                    variant="outlined"
+                    margin="dense"
+                    type="number"
+                    value={state.form.number_of_aged_dependents}
+                    onChange={handleChange}
+                    errors={state.errors.number_of_aged_dependents}
+                  />
+                </div>
+
+                <div>
+                  <InputLabel id="number_of_chronic_diseased_dependents-label">Number Of Chronic Diseased Dependents</InputLabel>
+                  <TextInputField
+                    name="number_of_chronic_diseased_dependents"
+                    variant="outlined"
+                    margin="dense"
+                    type="number"
+                    value={state.form.number_of_chronic_diseased_dependents}
+                    onChange={handleChange}
+                    errors={state.errors.number_of_chronic_diseased_dependents}
+                  />
+                </div>
 
               </div>
               <div

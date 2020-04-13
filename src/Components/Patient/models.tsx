@@ -16,6 +16,7 @@ export interface PatientModel {
     gender?: number;
     phone_number?: string;
     medical_history?: Array<{ disease: string | number; details: string }>;
+    facility_object?: { id: number; name: string, facility_type?: { id: number; name: string } }
     contact_with_carrier?: boolean;
     medical_history_details?: string;
     is_active?: boolean;
@@ -37,6 +38,13 @@ export interface PatientModel {
     local_body?: number;
     district?: number;
     state?: number;
+    nationality?: string;
+    passport_no?: string;
+    disease_status?: string;
+    date_of_birth?: string;
+    blood_group?: string;
+    number_of_aged_dependents?: number;
+    number_of_chronic_diseased_dependents?: number;
 }
 
 export interface SampleTestModel {
